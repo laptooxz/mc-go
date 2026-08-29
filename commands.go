@@ -316,9 +316,13 @@ func cmdRestore(args []string) error {
 		fmt.Println("Usage: mc restore <server> (backup-file)")
 		return nil
 	}
-	if _, err := os.Stat(backupFile); err != nil {
-		return fmt.Errorf("Backup file not found: %s", backupFile)
+	// Resolve the backup file. Accept a full path, a bare filename relative to
+	// /mnt/HDD/mc, or a server-prefix glob that uniquely matches one backup.
+	backup, err := resolveBackup(srv, backupFile)
+	if err != nil {
+		return err
 	}
+	backupFile = backup
 
 	jar, err := findJar(dir)
 	if err == nil {
@@ -340,6 +344,39 @@ func cmdRestore(args []string) error {
 	fmt.Printf("Restored %s from %s (%s)\n", srv, backupFile, durStr)
 	notify(srv, "Restore finished in "+durStr, "window-attention")
 	return nil
+}
+
+// resolveBackup finds the backup archive to restore. It accepts, in order of
+// preference:
+//   - an absolute/relative path that exists
+//   - a bare filename inside /mnt/HDD/mc
+//   - a glob/prefix that uniquely matches exactly one archive in /mnt/HDD/mc
+func resolveBackup(srv, ref string) (string, error) {
+	dir := "/mnt/HDD/mc"
+	if ref == "" {
+		return "", fmt.Errorf("no backup file specified")
+	}
+	// 1. Existing path (full or relative to cwd)
+	if _, err := os.Stat(ref); err == nil {
+		return ref, nil
+	}
+	// 2. Bare filename inside the backup dir
+	if _, err := os.Stat(filepath.Join(dir, ref)); err == nil {
+		return filepath.Join(dir, ref), nil
+	}
+	// 3. Glob matching the server's backups
+	matches, _ := filepath.Glob(filepath.Join(dir, ref+"*"))
+	if len(matches) == 0 {
+		matches, _ = filepath.Glob(filepath.Join(dir, "*"+srv+"*.tar.gz"))
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("%d backups match '%s'. Options:\n  %s",
+			len(matches), ref, strings.Join(matches, "\n  "))
+	}
+	return "", fmt.Errorf("Backup file not found: %s", ref)
 }
 
 // ---------------- rmworld ----------------
