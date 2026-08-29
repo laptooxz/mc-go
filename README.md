@@ -3,6 +3,9 @@
 Compiled Go replacement for the legacy `mc` fish function. Manages local
 Minecraft servers on `laptoo` (Alpine Linux, OpenRC, no systemd).
 
+> **⚠ vibecoded** — banged out with an AI; expect rough edges. It works (or
+> it doesn't, and then we vibecode a fix). YOLO.
+
 Single static binary, no runtime deps beyond `tmux` (the server process
 manager) and standard system tools (`pgrep`, `tar`, `ss`, `pkill`).
 
