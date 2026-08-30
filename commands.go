@@ -102,15 +102,11 @@ func cmdStart(args []string) error {
 		fmt.Printf("Server %s is already running (tmux session found).\n", srv)
 		return nil
 	}
-	if serverRunning(jar) {
-		out, _ := exec.Command("pgrep", "-f", jar).Output()
-		pid := strings.Fields(string(out))
-		if len(pid) > 0 {
-			fmt.Printf("Server %s process already running (PID %s). Killing stale process...\n", srv, pid[0])
-		}
-		exec.Command("kill", pid[0]).Run()
+	for _, pid := range javaPidsForDir(dir, jar) {
+		fmt.Printf("Server %s has a leftover process (PID %s). Killing stale process...\n", srv, pid)
+		exec.Command("kill", pid).Run()
 		time.Sleep(1 * time.Second)
-		exec.Command("kill", "-9", pid[0]).Run()
+		exec.Command("kill", "-9", pid).Run()
 		time.Sleep(1 * time.Second)
 	}
 

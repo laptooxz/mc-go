@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -39,6 +40,29 @@ func tmuxAttach(sess string) {
 func serverRunning(jarname string) bool {
 	cmd := exec.Command("pgrep", "-f", jarname)
 	return cmd.Run() == nil
+}
+
+// javaPidsForDir returns the PIDs of processes running the given jar whose
+// working directory is dir. Matching by cwd prevents killing a different
+// server that happens to share the same jar filename.
+func javaPidsForDir(dir, jarname string) []string {
+	out, err := exec.Command("pgrep", "-f", jarname).Output()
+	if err != nil {
+		return nil
+	}
+	realDir, _ := filepath.EvalSymlinks(dir)
+	var pids []string
+	for _, pid := range strings.Fields(string(out)) {
+		cwd, err := os.Readlink("/proc/" + pid + "/cwd")
+		if err != nil {
+			continue
+		}
+		realCwd, _ := filepath.EvalSymlinks(cwd)
+		if realCwd == realDir {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // waitStop polls tmux until the session disappears. On each 30s timeout it
