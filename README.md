@@ -1,7 +1,7 @@
 # mc-go
 
 Compiled Go replacement for the legacy `mc` fish function. Manages local
-Minecraft servers on `laptoo` (Alpine Linux, OpenRC, no systemd).
+Minecraft servers on `laptoo`.
 
 > **yep this is entirely vibecoded.**
 
