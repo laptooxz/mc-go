@@ -34,15 +34,9 @@ func runCmd(srv string) string {
 		jar = "paper.jar"
 	}
 	java := readJavaCmd(dir)
-	// mcargs is the java line with paper.jar placeholder; substitute jar + java.
-	line := mcArgsLine()
-	// s|paper.jar|JAR|
-	line = strings.Replace(line, "paper.jar", jar, 1)
-	// s|^java |JAVA |
-	if strings.HasPrefix(line, "java ") {
-		line = java + strings.TrimPrefix(line, "java")
-	}
-	return line
+	flags := readJvmArgs(dir)
+	// reconstruct: <java> <flags> -jar <jar> --nogui
+	return java + " " + flags + " -jar " + jar + " --nogui"
 }
 
 // ---------------- list ----------------

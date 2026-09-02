@@ -24,6 +24,8 @@ Commands:
   watch        Check mc-watcher status
   whitelist    Manage whitelist (list|add <player>|remove <player>)
   bot          Manage offline bots (list|join [username] [-b]|kick <username>)
+  java         Configure per-server Java version (fzf picker)
+  setup        Unified setup: Java + RAM + JVM flags (fzf menu)
 `
 
 func main() {
@@ -70,6 +72,10 @@ func main() {
 		err = cmdWhitelist(args)
 	case "bot":
 		err = cmdBot(args)
+	case "java":
+		err = cmdJava(args)
+	case "setup":
+		err = cmdSetup(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usageText)
