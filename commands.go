@@ -143,7 +143,6 @@ func cmdStop(args []string) error {
 		exec.Command("tmux", "kill-session", "-t", session).Run()
 	}
 	fmt.Println("Server stopped.")
-	notify(srv, "Server stopped", "stop")
 	return nil
 }
 
