@@ -425,6 +425,37 @@ func cmdRmworld(args []string) error {
 
 // ---------------- status ----------------
 func cmdStatus(args []string) error {
+	if len(args) == 0 {
+		servers, _ := listServers()
+		running := []string{}
+		for _, srv := range servers {
+			dir := filepath.Join(mcBase(), srv)
+			session := sessionFor(srv)
+			jar, err := findJar(dir)
+			if err != nil {
+				continue
+			}
+			if len(javaPidsForDir(dir, jar)) > 0 || tmuxHasSession(session) {
+				running = append(running, srv)
+			}
+		}
+		if len(running) == 0 {
+			fmt.Println("No servers are currently running.")
+			return nil
+		}
+		fmt.Println("Running servers:")
+		for _, srv := range running {
+			dir := filepath.Join(mcBase(), srv)
+			session := sessionFor(srv)
+			jar, _ := findJar(dir)
+			state := "RUNNING"
+			if len(javaPidsForDir(dir, jar)) == 0 && tmuxHasSession(session) {
+				state = "STOPPED (stale tmux session)"
+			}
+			fmt.Printf("  %-16s %s\n", srv, state)
+		}
+		return nil
+	}
 	srv, err := requireServer(args)
 	if err != nil {
 		return err
@@ -436,7 +467,7 @@ func cmdStatus(args []string) error {
 		fmt.Printf("%s: INVALID (no .jar file)\n", srv)
 		return nil
 	}
-	if serverRunning(jar) {
+	if len(javaPidsForDir(dir, jar)) > 0 {
 		fmt.Printf("%s: RUNNING\n", srv)
 	} else if tmuxHasSession(session) {
 		fmt.Printf("%s: STOPPED (stale tmux session)\n", srv)

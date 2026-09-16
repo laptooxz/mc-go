@@ -18,9 +18,34 @@ func tmuxHasSession(sess string) bool {
 	return cmd.Run() == nil
 }
 
+// paneCount returns the number of panes in a tmux session (0 if no session).
+func paneCount(sess string) int {
+	out, err := exec.Command("tmux", "list-panes", "-t", sess).Output()
+	if err != nil {
+		return 0
+	}
+	return len(strings.Split(strings.TrimSpace(string(out)), "\n"))
+}
+
 // tmuxSend sends a line to a tmux session.
+// If the session has multiple panes (e.g. user split the window), the
+// java console may not be the active pane — `send-keys -t sess` would hit
+// the wrong pane and `stop` never reaches the server. In that case we
+// broadcast to every pane in the session.
 func tmuxSend(sess, line string) {
-	exec.Command("tmux", "send-keys", "-t", sess, line, "Enter").Run()
+	out, err := exec.Command("tmux", "list-panes", "-t", sess, "-F", "#{pane_id}").Output()
+	if err != nil {
+		exec.Command("tmux", "send-keys", "-t", sess, line, "Enter").Run()
+		return
+	}
+	panes := strings.Fields(string(out))
+	if len(panes) <= 1 {
+		exec.Command("tmux", "send-keys", "-t", sess, line, "Enter").Run()
+		return
+	}
+	for _, pane := range panes {
+		exec.Command("tmux", "send-keys", "-t", pane, line, "Enter").Run()
+	}
 }
 
 // tmuxAttach attaches the current terminal to a session (replaces process).
@@ -92,6 +117,15 @@ func waitStop(srv, session, jarname string, timeout, maxRetries int) {
 		}
 		if !tmuxHasSession(session) {
 			return
+		}
+
+		// Extra panes can swallow the initial `stop` (sent to the wrong pane).
+		// If the session has >1 pane, rebroadcast `stop` to all panes and
+		// retry the wait without burning a retry.
+		if n := paneCount(session); n > 1 {
+			fmt.Printf("Session %s has %d panes — broadcasting stop to all panes and retrying...\n", session, n)
+			tmuxSend(session, "stop")
+			continue
 		}
 
 		if retries == 0 {
