@@ -101,19 +101,30 @@ func waitStop(srv, session, jarname string, timeout, maxRetries int) {
 		enableCbreak()
 		defer restoreTTY()
 	}
+	// Anything already sitting in the tty input buffer (a leftover Enter from
+	// the previous prompt, a pasted char, a key the shell didn't consume) would
+	// otherwise be read by the first readKey() below and be mistaken for
+	// "user pressed a key to skip the wait" — making the 30s wait return in 0s.
+	// Flush it before the first read so only genuine presses during the wait count.
+	if interactive {
+		drainInput()
+	}
 	retries := 0
+	rebroadcasts := 0
 	for {
 		// Wait up to `timeout` seconds, but bail to the prompt immediately if
-		// a key is pressed (only when interactive).
-		elapsed := 0
-		for elapsed < timeout && tmuxHasSession(session) {
-			if interactive && readKey(2*time.Second) != 0 {
-				break // key pressed -> jump to prompt
+		// a key is pressed (only when interactive). Measured against the wall
+		// clock, not a tick counter, so the time we announce is the time we
+		// actually spent.
+		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+		for time.Now().Before(deadline) && tmuxHasSession(session) {
+			if interactive {
+				if readKey(500 * time.Millisecond) != 0 {
+					break // key pressed -> jump to prompt
+				}
+			} else {
+				time.Sleep(500 * time.Millisecond)
 			}
-			if !interactive {
-				time.Sleep(2 * time.Second)
-			}
-			elapsed += 2
 		}
 		if !tmuxHasSession(session) {
 			return
@@ -121,8 +132,11 @@ func waitStop(srv, session, jarname string, timeout, maxRetries int) {
 
 		// Extra panes can swallow the initial `stop` (sent to the wrong pane).
 		// If the session has >1 pane, rebroadcast `stop` to all panes and
-		// retry the wait without burning a retry.
-		if n := paneCount(session); n > 1 {
+		// retry the wait without burning a retry. Bounded: a session that keeps
+		// reporting extra panes would otherwise rebroadcast forever and never
+		// reach the force-kill prompt.
+		if n := paneCount(session); n > 1 && rebroadcasts < maxRetries {
+			rebroadcasts++
 			fmt.Printf("Session %s has %d panes — broadcasting stop to all panes and retrying...\n", session, n)
 			tmuxSend(session, "stop")
 			continue

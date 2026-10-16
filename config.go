@@ -13,10 +13,10 @@ func jsonUnmarshal(b []byte, v interface{}) error {
 }
 
 // mcArgsLine returns the canonical java command line with paper.jar as the
-// jar placeholder (mirrors $mcargs from minecraft.fish). The jar name and
+// jar placeholder (mirrors $mcargs from minecraft.fish {old-mc artifact}). The jar name and
 // java provider are substituted per-server at launch.
 func mcArgsLine() string {
-	return "java -Xms2G -Xmx4G -Djava.net.preferIPv4Stack=true -XX:+UseG1GC " +
+	return "java -Xms2G -Xmx4G -Djava.io.tmpdir=/var/tmp -Djava.net.preferIPv4Stack=true -XX:+UseG1GC " +
 		"-XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=100 " +
 		"-XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch " +
 		"-XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M " +
