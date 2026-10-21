@@ -18,9 +18,9 @@ type jvm struct {
 	Raw     string // first line of java -version (e.g. openjdk version "21.0.12" 2026-07-21)
 }
 
-// listJVMs scans /usr/lib/jvm for Java installs.
+// listJVMs scans the configured JVM root for Java installs.
 func listJVMs() []jvm {
-	matches, _ := filepath.Glob("/usr/lib/jvm/*/bin/java")
+	matches, _ := filepath.Glob(filepath.Join(cfg().JVMRoot, "*/bin/java"))
 	seen := map[string]bool{}
 	var out []jvm
 	for _, p := range matches {
@@ -142,7 +142,7 @@ func suggestJava(jar string) string {
 func cmdJava(args []string) error {
 	jvms := listJVMs()
 	if len(jvms) == 0 {
-		return fmt.Errorf("no JVMs found in /usr/lib/jvm/*/bin/java")
+		return fmt.Errorf("no JVMs found in %s/*/bin/java", cfg().JVMRoot)
 	}
 
 	// sub-modes: list, check, <server> [java-ref]
@@ -202,7 +202,7 @@ func cmdJava(args []string) error {
 }
 
 func printJavaHelp() {
-	fmt.Print(`Usage: mc java [server] [jvm]
+	fmt.Printf(`Usage: mc java [server] [jvm]
 
   mc java                Check all servers + pick server & JVM via fzf
   mc java check          Check all servers' .java_version (no picker)
@@ -211,7 +211,7 @@ func printJavaHelp() {
   mc java <server> <jvm> Set JVM non-interactively
                          <jvm> can be:  8 | 17 | 21 | 25
                                          java-21-openjdk
-                                         /usr/lib/jvm/java-21-openjdk/bin/java
+                                         %s/java-21-openjdk/bin/java
 
 Examples:
   mc java
@@ -219,7 +219,7 @@ Examples:
   mc java survival 21
   mc java survival java-17-openjdk
   mc java check
-`)
+`, cfg().JVMRoot)
 }
 
 func javaCheckAll(jvms []jvm) error {
@@ -366,7 +366,7 @@ func resolveJVMRef(jvms []jvm, ref string) (jvm, error) {
 func pickServerFzf() (string, error) {
 	servers, _ := listServers()
 	if len(servers) == 0 {
-		return "", fmt.Errorf("no servers found in ~/mc")
+		return "", fmt.Errorf("no servers found in %s", cfg().ServerRoot)
 	}
 	// enrich lines with java status
 	var lines []string

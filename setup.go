@@ -85,7 +85,7 @@ func cmdSetup(args []string) error {
 }
 
 func printSetupHelp() {
-	fmt.Print(`Usage: mc setup [server] [action]
+	fmt.Printf(`Usage: mc setup [server] [action]
 
   mc setup                Pick server via fzf, then configure Java + RAM + flags
   mc setup <server>       Configure <server> (interactive fzf menu)
@@ -96,15 +96,15 @@ func printSetupHelp() {
   mc setup list           List installed JVMs
 
 Setup menu (interactive):
-  Java  — pick JVM via fzf  (writes ~/mc/<srv>/.java_version)
-  RAM   — pick Xms/Xmx via fzf (writes ~/mc/<srv>/.java_args)
+  Java  — pick JVM via fzf  (writes %s/<srv>/.java_version)
+  RAM   — pick Xms/Xmx via fzf (writes %s/<srv>/.java_args)
   Flags — edit raw JVM flags (Aikar defaults + your overrides)
   View  — show full launch command
   Reset — delete .java_args → back to defaults
 
 Files:
-  ~/mc/<server>/.java_version  — path to java binary (e.g. /usr/lib/jvm/java-21-openjdk/bin/java)
-  ~/mc/<server>/.java_args     — JVM flags (e.g. -Xms2G -Xmx4G -XX:+UseG1GC ...)
+  %s/<server>/.java_version  — path to java binary (e.g. %s/java-21-openjdk/bin/java)
+  %s/<server>/.java_args     — JVM flags (e.g. -Xms2G -Xmx4G -XX:+UseG1GC ...)
                                 Falls back to built-in Aikar flags if missing.
                                 Also checked: .mc_args, .jvm_args
 
@@ -115,7 +115,7 @@ Examples:
   mc setup survival ram 6G
   mc setup survival ram 8G 4G
   mc setup check
-`)
+`, cfg().ServerRoot, cfg().ServerRoot, cfg().ServerRoot, cfg().JVMRoot, cfg().ServerRoot)
 }
 
 func setupLoop(srv string) error {

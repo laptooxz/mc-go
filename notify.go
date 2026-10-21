@@ -9,7 +9,7 @@ import (
 )
 
 func soundFor(name string) string {
-	sounds := filepath.Join(home(), "mc/library/sounds")
+	sounds := cfg().SoundsDir
 	switch name {
 	case "start":
 		return filepath.Join(sounds, "block/beacon/activate.ogg")
@@ -171,14 +171,14 @@ func runInHostEnv(argv ...string) {
 // ntfyPush sends a notification to the local ntfy server (mirrors ntfy-push).
 func ntfyPush(topic, title, msg string, priority int) {
 	token := ""
-	if b, err := os.ReadFile("/etc/sysmon/tokens/ntfy.sh"); err == nil {
+	if b, err := os.ReadFile(cfg().NtfyTokenFile); err == nil {
 		s := strings.TrimSpace(string(b))
 		if strings.HasPrefix(s, "NTFY_TOKEN=") {
 			token = strings.Trim(strings.TrimPrefix(s, "NTFY_TOKEN="), "\"'")
 		}
 	}
 	body := strings.NewReader(msg)
-	req, err := http.NewRequest("POST", "http://127.0.0.1:8989/"+topic, body)
+	req, err := http.NewRequest("POST", strings.TrimRight(cfg().NtfyURL, "/")+"/"+topic, body)
 	if err != nil {
 		return
 	}

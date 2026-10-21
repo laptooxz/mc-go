@@ -25,7 +25,7 @@ func requireServer(args []string) (srv string, err error) {
 	return srv, nil
 }
 
-func sessionFor(srv string) string { return "mc-" + srv }
+func sessionFor(srv string) string { return cfg().SessionPrefix + srv }
 
 func runCmd(srv string) string {
 	dir := filepath.Join(mcBase(), srv)
@@ -231,7 +231,7 @@ func cmdBackup(args []string) error {
 		fmt.Printf("No world folder found in %s\n", srv)
 		return nil
 	}
-	dest := "/mnt/HDD/mc"
+	dest := cfg().BackupDir
 	os.MkdirAll(dest, 0755)
 	ts := time.Now().Format("2006-01-02_1504")
 
@@ -280,7 +280,7 @@ func cmdRestore(args []string) error {
 	}
 	if backupFile == "" {
 		fmt.Println("Available backups:")
-		matches, _ := filepath.Glob("/mnt/HDD/mc/*" + srv + "*.tar.gz")
+		matches, _ := filepath.Glob(filepath.Join(cfg().BackupDir, "*"+srv+"*.tar.gz"))
 		// sort by mtime desc, take 5
 		type b struct{ name string; t time.Time }
 		var bs []b
@@ -306,7 +306,7 @@ func cmdRestore(args []string) error {
 		return nil
 	}
 	// Resolve the backup file. Accept a full path, a bare filename relative to
-	// /mnt/HDD/mc, or a server-prefix glob that uniquely matches one backup.
+	// the configured backup dir, or a server-prefix glob that matches one backup.
 	backup, err := resolveBackup(srv, backupFile)
 	if err != nil {
 		return err
@@ -338,10 +338,10 @@ func cmdRestore(args []string) error {
 // resolveBackup finds the backup archive to restore. It accepts, in order of
 // preference:
 //   - an absolute/relative path that exists
-//   - a bare filename inside /mnt/HDD/mc
-//   - a glob/prefix that uniquely matches exactly one archive in /mnt/HDD/mc
+//   - a bare filename inside the configured backup dir
+//   - a glob/prefix that uniquely matches exactly one archive there
 func resolveBackup(srv, ref string) (string, error) {
-	dir := "/mnt/HDD/mc"
+	dir := cfg().BackupDir
 	if ref == "" {
 		return "", fmt.Errorf("no backup file specified")
 	}
@@ -385,7 +385,7 @@ func cmdRmworld(args []string) error {
 	var confirm string
 	fmt.Scanln(&confirm)
 	if strings.EqualFold(strings.TrimSpace(confirm), "y") {
-		dest := "/mnt/HDD/mc"
+		dest := cfg().BackupDir
 		os.MkdirAll(dest, 0755)
 		ts := time.Now().Format("2006-01-02_1504")
 		var bluemapMaps []string
@@ -683,7 +683,7 @@ func botJoin(port string, extra []string) {
 		script = "index-bedrock.js"
 		sess = user + "-b"
 	}
-	botDir := filepath.Join(home(), "mc", "bot")
+	botDir := cfg().BotDir
 	cmdline := fmt.Sprintf("node %s --host %s --port %s --username %s 2>&1 | tee -a %s/%s.log",
 		script, host, port, user, botDir, user)
 	exec.Command("tmux", "new-session", "-d", "-s", botSessName(sess), "-c", botDir, cmdline).Run()

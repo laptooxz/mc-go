@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 func jsonUnmarshal(b []byte, v interface{}) error {
@@ -16,7 +17,7 @@ func jsonUnmarshal(b []byte, v interface{}) error {
 // jar placeholder (mirrors $mcargs from minecraft.fish {old-mc artifact}). The jar name and
 // java provider are substituted per-server at launch.
 func mcArgsLine() string {
-	return "java -Xms2G -Xmx4G -Djava.io.tmpdir=/var/tmp -Djava.net.preferIPv4Stack=true -XX:+UseG1GC " +
+	return "java -Xms2G -Xmx4G -Djava.io.tmpdir=" + cfg().TmpDir + " -Djava.net.preferIPv4Stack=true -XX:+UseG1GC " +
 		"-XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=100 " +
 		"-XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch " +
 		"-XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M " +
@@ -152,7 +153,271 @@ func updateMem(flags, newXms, newXmx string) string {
 	return strings.Join(out, " ")
 }
 
-// configPath is the future home for an optional mc config override.
+// configPath is the optional runtime config override.
 func configPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".config/mc/config.json")
+	return filepath.Join(home(), ".config/mc/config.json")
+}
+
+// Config holds every path/layout assumption that used to be compiled in.
+// Defaults reproduce the original laptoo layout; ~/.config/mc/config.json
+// overrides any subset of them.
+type Config struct {
+	ServerRoot    string `json:"server_root"`     // dirs holding one server each
+	BackupDir     string `json:"backup_dir"`      // where `mc backup` writes / `restore` reads
+	JVMRoot       string `json:"jvm_root"`        // contains <name>/bin/java
+	BotDir        string `json:"bot_dir"`         // bot engine + state + logs
+	SoundsDir     string `json:"sounds_dir"`      // .ogg files used by notifications
+	TmpDir        string `json:"tmp_dir"`         // -Djava.io.tmpdir for default flags
+	SessionPrefix string `json:"session_prefix"`  // tmux session = <prefix><server>
+	NtfyURL       string `json:"ntfy_url"`        // local ntfy base URL
+	NtfyTokenFile string `json:"ntfy_token_file"` // file containing NTFY_TOKEN=...
+}
+
+func defaultConfig() Config {
+	return Config{
+		ServerRoot:    filepath.Join(home(), "mc"),
+		BackupDir:     "/mnt/HDD/mc",
+		JVMRoot:       "/usr/lib/jvm",
+		BotDir:        filepath.Join(home(), "mc", "bot"),
+		SoundsDir:     filepath.Join(home(), "mc", "library", "sounds"),
+		TmpDir:        "/var/tmp",
+		SessionPrefix: "mc-",
+		NtfyURL:       "http://127.0.0.1:8989",
+		NtfyTokenFile: "/etc/sysmon/tokens/ntfy.sh",
+	}
+}
+
+var (
+	configOnce sync.Once
+	configVal  Config
+)
+
+// cfg returns the process-wide config, loading it once.
+func cfg() Config {
+	configOnce.Do(func() { configVal = loadConfig() })
+	return configVal
+}
+
+func loadConfig() Config {
+	c := defaultConfig()
+	b, err := os.ReadFile(configPath())
+	if err != nil {
+		return c
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		fmt.Fprintf(os.Stderr, "mc: warning: ignoring %s: %v\n", configPath(), err)
+		return defaultConfig()
+	}
+	c.applyDefaults()
+	c.ServerRoot = expandPath(c.ServerRoot)
+	c.BackupDir = expandPath(c.BackupDir)
+	c.JVMRoot = expandPath(c.JVMRoot)
+	c.BotDir = expandPath(c.BotDir)
+	c.SoundsDir = expandPath(c.SoundsDir)
+	c.TmpDir = expandPath(c.TmpDir)
+	c.NtfyTokenFile = expandPath(c.NtfyTokenFile)
+	return c
+}
+
+// applyDefaults fills anything left empty (e.g. `"backup_dir": ""`).
+func (c *Config) applyDefaults() {
+	d := defaultConfig()
+	if c.ServerRoot == "" {
+		c.ServerRoot = d.ServerRoot
+	}
+	if c.BackupDir == "" {
+		c.BackupDir = d.BackupDir
+	}
+	if c.JVMRoot == "" {
+		c.JVMRoot = d.JVMRoot
+	}
+	if c.BotDir == "" {
+		c.BotDir = d.BotDir
+	}
+	if c.SoundsDir == "" {
+		c.SoundsDir = d.SoundsDir
+	}
+	if c.TmpDir == "" {
+		c.TmpDir = d.TmpDir
+	}
+	if c.SessionPrefix == "" {
+		c.SessionPrefix = d.SessionPrefix
+	}
+	if c.NtfyURL == "" {
+		c.NtfyURL = d.NtfyURL
+	}
+	if c.NtfyTokenFile == "" {
+		c.NtfyTokenFile = d.NtfyTokenFile
+	}
+}
+
+// expandPath expands a leading ~ and any $VARS.
+func expandPath(p string) string {
+	if p == "~" {
+		p = home()
+	} else if strings.HasPrefix(p, "~/") {
+		p = filepath.Join(home(), p[2:])
+	}
+	return os.ExpandEnv(p)
+}
+
+// tildePath turns a path under $HOME back into ~/... so a copied config keeps
+// working for a different user.
+func tildePath(p string) string {
+	h := home()
+	if p == h {
+		return "~"
+	}
+	if strings.HasPrefix(p, h+string(filepath.Separator)) {
+		return "~/" + filepath.ToSlash(strings.TrimPrefix(p, h+string(filepath.Separator)))
+	}
+	return p
+}
+
+func saveConfig(c Config) error {
+	p := configPath()
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		return err
+	}
+	c.ServerRoot = tildePath(c.ServerRoot)
+	c.BackupDir = tildePath(c.BackupDir)
+	c.JVMRoot = tildePath(c.JVMRoot)
+	c.BotDir = tildePath(c.BotDir)
+	c.SoundsDir = tildePath(c.SoundsDir)
+	c.TmpDir = tildePath(c.TmpDir)
+	c.NtfyTokenFile = tildePath(c.NtfyTokenFile)
+	b, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, append(b, '\n'), 0644)
+}
+
+func setConfigField(c *Config, key, val string) error {
+	key = strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	switch key {
+	case "server_root":
+		c.ServerRoot = val
+	case "backup_dir":
+		c.BackupDir = val
+	case "jvm_root":
+		c.JVMRoot = val
+	case "bot_dir":
+		c.BotDir = val
+	case "sounds_dir":
+		c.SoundsDir = val
+	case "tmp_dir":
+		c.TmpDir = val
+	case "session_prefix":
+		c.SessionPrefix = val
+	case "ntfy_url":
+		c.NtfyURL = val
+	case "ntfy_token_file":
+		c.NtfyTokenFile = val
+	default:
+		return fmt.Errorf("unknown config key %q\nvalid keys: server_root backup_dir jvm_root bot_dir sounds_dir tmp_dir session_prefix ntfy_url ntfy_token_file", key)
+	}
+	return nil
+}
+
+func cmdConfig(args []string) error {
+	p := configPath()
+	if len(args) == 0 || args[0] == "show" {
+		printConfig(p)
+		return nil
+	}
+	switch args[0] {
+	case "path":
+		fmt.Println(p)
+	case "init":
+		force := len(args) > 1 && (args[1] == "-f" || args[1] == "--force")
+		if _, err := os.Stat(p); err == nil && !force {
+			return fmt.Errorf("%s already exists (use 'mc config init --force' to overwrite)", p)
+		}
+		if err := saveConfig(defaultConfig()); err != nil {
+			return err
+		}
+		fmt.Printf("Wrote default config to %s\n", p)
+	case "set":
+		if len(args) < 3 {
+			return fmt.Errorf("Usage: mc config set <key> <value>")
+		}
+		key, val := args[1], strings.Join(args[2:], " ")
+		c := cfg()
+		if err := setConfigField(&c, key, val); err != nil {
+			return err
+		}
+		if err := saveConfig(c); err != nil {
+			return err
+		}
+		fmt.Printf("%s = %s\n", strings.ToLower(strings.ReplaceAll(key, "-", "_")), val)
+	case "help", "-h", "--help":
+		printConfigHelp()
+	default:
+		return fmt.Errorf("Usage: mc config [show|path|init [--force]|set <key> <value>]")
+	}
+	return nil
+}
+
+func printConfigHelp() {
+	fmt.Print(`Usage: mc config [show|path|init [--force]|set <key> <value>]
+
+  mc config                 Show effective values + config file path
+  mc config path            Print the config file path
+  mc config init [--force]  Write a default config file
+  mc config set <key> <val> Update one key (writes the whole file)
+
+Keys:
+  server_root      servers live here, one dir per server      (~/mc)
+  backup_dir       backup archives read/written here          (/mnt/HDD/mc)
+  jvm_root         scanned as <jvm_root>/*/bin/java            (/usr/lib/jvm)
+  bot_dir          bot engine, .bots state and logs            (~/mc/bot)
+  sounds_dir       .ogg files for desktop notifications        (~/mc/library/sounds)
+  tmp_dir          -Djava.io.tmpdir in the default flags       (/var/tmp)
+  session_prefix   tmux session name = <prefix><server>        (mc-)
+  ntfy_url         local ntfy base URL                         (http://127.0.0.1:8989)
+  ntfy_token_file  file containing NTFY_TOKEN=...              (/etc/sysmon/tokens/ntfy.sh)
+
+Values may use ~ and $VARS. Missing or empty keys fall back to the defaults.
+`)
+}
+
+func printConfig(p string) {
+	c := cfg()
+	set := map[string]bool{}
+	status := "using defaults"
+	if b, err := os.ReadFile(p); err == nil {
+		var raw map[string]json.RawMessage
+		if json.Unmarshal(b, &raw) == nil {
+			status = "loaded"
+			for k := range raw {
+				set[strings.ToLower(k)] = true
+			}
+		} else {
+			status = "unreadable — using defaults"
+		}
+	}
+	fmt.Printf("Config file: %s (%s)\n\n", p, status)
+
+	rows := []struct {
+		key string
+		val string
+	}{
+		{"server_root", c.ServerRoot},
+		{"backup_dir", c.BackupDir},
+		{"jvm_root", c.JVMRoot},
+		{"bot_dir", c.BotDir},
+		{"sounds_dir", c.SoundsDir},
+		{"tmp_dir", c.TmpDir},
+		{"session_prefix", c.SessionPrefix},
+		{"ntfy_url", c.NtfyURL},
+		{"ntfy_token_file", c.NtfyTokenFile},
+	}
+	for _, r := range rows {
+		src := "default"
+		if set[r.key] {
+			src = "file"
+		}
+		fmt.Printf("  %-16s %-40s (%s)\n", r.key, r.val, src)
+	}
 }

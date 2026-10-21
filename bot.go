@@ -10,7 +10,7 @@ import (
 
 const botPrefix = "mcbot"
 
-func botsDir() string { return filepath.Join(home(), "mc", "bot", ".bots") }
+func botsDir() string { return filepath.Join(cfg().BotDir, ".bots") }
 
 func botSessName(name string) string {
 	var b strings.Builder

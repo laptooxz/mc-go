@@ -26,6 +26,7 @@ Commands:
   bot          Manage offline bots (list|join [username] [-b]|kick <username>)
   java         Configure per-server Java version (fzf picker)
   setup        Unified setup: Java + RAM + JVM flags (fzf menu)
+  config       Show or edit runtime paths (~/.config/mc/config.json)
 `
 
 func main() {
@@ -76,6 +77,8 @@ func main() {
 		err = cmdJava(args)
 	case "setup":
 		err = cmdSetup(args)
+	case "config":
+		err = cmdConfig(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		fmt.Print(usageText)
@@ -94,10 +97,11 @@ func home() string {
 }
 
 func mcBase() string {
-	return filepath.Join(home(), "mc")
+	return cfg().ServerRoot
 }
 
-// listServers returns directory names under ~/mc that contain at least one .jar.
+// listServers returns directory names under the server root that contain at
+// least one .jar.
 func listServers() ([]string, error) {
 	entries, err := os.ReadDir(mcBase())
 	if err != nil {
