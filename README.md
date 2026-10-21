@@ -5,8 +5,26 @@ Minecraft servers on `laptoo`.
 
 > **yep this is entirely vibecoded.**
 
-Single static binary, no runtime deps beyond `tmux` (the server process
-manager) and standard system tools (`pgrep`, `tar`, `ss`, `pkill`).
+> **Built for one homelab.** This is written for and tested only on `laptoo`
+> (Alpine Linux, OpenRC, my own directory layout). It can be adapted to other
+> systems — see [Portability](#portability) — but it is not portable as-is,
+> and it has no CI, no test suite and no security audit. Read the source before
+> running it anywhere that matters.
+
+## Requirements
+
+The binary is static, but most commands shell out to system tools:
+
+| Needed for | Dependency |
+|---|---|
+| everything | `tmux` (server process manager), `pgrep`, `tar`, `ss`, `pkill` |
+| `java` / `setup` pickers | `fzf` — optional; falls back to a numbered prompt |
+| `setup … flags` | `$EDITOR` — optional; falls back to a single-line prompt |
+| `bot` | `node` + the bot engine in `~/mc/bot/` (`mineflayer`, plus `bedrock-protocol` for `-b`) — **not shipped in this repo** |
+| notifications | `notify-send` + `paplay`, and an ntfy token at `/etc/sysmon/tokens/ntfy.sh` — all optional |
+
+The bot engine lives outside this repo (`~/mc/bot/index.js` /
+`index-bedrock.js` + `node_modules`); `mc bot` only launches it.
 
 ## Usage
 
@@ -69,6 +87,25 @@ sudo install -m 755 mc /usr/local/bin/mc
 - `config.go` — Aikar flags + per-server `.java_args` (`readJvmArgs`/`writeJvmArgs`/`parseMem`)
 - `java.go` — JVM discovery (`/usr/lib/jvm/*/bin/java`) + `mc java` checker & fzf picker
 - `setup.go` — `mc setup` unified menu (Java + RAM + flags, fzf + $EDITOR fallback)
+
+## Portability
+
+Nothing here is configurable at runtime — these assumptions are compiled in:
+
+| Assumption | Where |
+|---|---|
+| servers live in `~/mc/<server>` (a dir with at least one `.jar`) | `main.go` (`mcBase`) |
+| backups are written/read in `/mnt/HDD/mc/` | `commands.go` |
+| JVMs are discovered at `/usr/lib/jvm/*/bin/java` | `java.go` |
+| bot engine, state and logs live in `~/mc/bot/` | `bot.go`, `commands.go` |
+| Minecraft sounds live in `~/mc/library/sounds` | `notify.go` |
+| default JVM flags include `-Djava.io.tmpdir=/var/tmp` | `config.go` |
+| ntfy token is read from `/etc/sysmon/tokens/ntfy.sh` | `notify.go` |
+| tmux sessions are named `mc-<server>` | `commands.go` (`sessionFor`) |
+
+To port it, change those constants and rebuild. `~/.config/mc/config.json` is
+reserved by `configPath()` but is not read yet, so there is no config file
+today.
 
 ## Behavior notes
 
